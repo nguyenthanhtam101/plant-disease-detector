@@ -1,6 +1,7 @@
 import streamlit as st
 import tensorflow as tf
 import numpy as np
+import cv2
 from PIL import Image
 import os
 import gdown
@@ -28,6 +29,41 @@ else:
     st.error("❌ Không thể tải mô hình — kiểm tra lại link hoặc quyền chia sẻ Google Drive.")
 
 model = tf.keras.models.load_model(MODEL_PATH)
+
+# ======================
+# 🧠 HÀM GRAD-CAM
+# ======================
+def get_gradcam(img_array, model, last_conv_layer_name='conv5_block3_out'):
+    grad_model = tf.keras.models.Model(
+        [model.inputs],
+        [model.get_layer(last_conv_layer_name).output, model.output]
+    )
+
+    with tf.GradientTape() as tape:
+        conv_outputs, predictions = grad_model(img_array)
+        pred_index = tf.argmax(predictions[0])
+        class_channel = predictions[:, pred_index]
+
+    grads = tape.gradient(class_channel, conv_outputs)
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    conv_outputs = conv_outputs[0]
+    heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
+    heatmap = tf.squeeze(heatmap)
+    heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+    return heatmap.numpy()
+
+def overlay_heatmap(image_pil, heatmap, intensity=0.6):
+    img = np.array(image_pil)
+    heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
+    heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    superimposed = cv2.addWeighted(img_rgb, 1 - intensity, heatmap_colored, intensity, 0)
+    return img, cv2.cvtColor(superimposed, cv2.COLOR_BGR2RGB)
+
+def calculate_infected_area(heatmap, threshold=0.5):
+    mask = heatmap > threshold
+    percent = np.sum(mask) / mask.size * 100
+    return percent
 
 # ======================
 # 3️⃣ Chọn ảnh
@@ -59,9 +95,29 @@ if uploaded_file is not None:
     # ======================
     if prob >= 0.5:
         st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
+
+        # --- Grad-CAM: hiển thị vùng bị bệnh ---
+        heatmap = get_gradcam(img_array, model)
+        img_orig, img_overlay = overlay_heatmap(image, heatmap)
+        infected_percent = calculate_infected_area(heatmap, 0.5)
+
+        st.image([img_orig, img_overlay],
+                 caption=["Ảnh gốc", "Vùng bị sâu bệnh"],
+                 width=300)
+        st.write(f"**Tỷ lệ vùng bị sâu bệnh:** {infected_percent:.2f}%")
+
+        if infected_percent > 60:
+            st.error("⚠️ Khuyến nghị: Lá bị sâu bệnh nặng, **nên bỏ đi** để tránh lây lan.")
+        elif infected_percent < 40:
+            st.warning("💡 Khuyến nghị: Bị nhẹ, **có thể cắt bỏ phần bệnh** để tránh ảnh hưởng toàn cây.")
+        else:
+            st.info("🩺 Mức độ trung bình, nên theo dõi thêm.")
     else:
         st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({(1-prob)*100:.2f}% xác suất)")
+        st.image(image, caption="Ảnh gốc (khỏe mạnh)", width=300)
 
     st.write("---")
     st.caption("Model: ResNet50 (Fine-tuned) | Framework: TensorFlow + Streamlit")
 
+    st.markdown("---")
+    st.caption("📌 Dự đoán chỉ mang tính chất tham khảo và có thể mắc lỗi. Vui lòng kiểm chứng các thông tin quan trọng.")
