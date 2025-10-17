@@ -33,24 +33,32 @@ model = tf.keras.models.load_model(MODEL_PATH)
 # ======================
 # 🧠 HÀM GRAD-CAM
 # ======================
-def get_gradcam(img_array, model, last_conv_layer_name='conv5_block3_out'):
+def get_gradcam(img_array, model, last_conv_layer_name=None):
+    if last_conv_layer_name is None:
+        # Tự động tìm lớp conv cuối cùng
+        last_conv_layer_name = [layer.name for layer in model.layers if 'conv' in layer.name][-1]
+
     grad_model = tf.keras.models.Model(
-        [model.inputs],
-        [model.get_layer(last_conv_layer_name).output, model.output]
+        [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
-        pred_index = tf.argmax(predictions[0])
-        class_channel = predictions[:, pred_index]
+        # Với mô hình nhị phân (1 output sigmoid)
+        if predictions.shape[-1] == 1:
+            class_channel = predictions[:, 0]
+        else:
+            pred_index = tf.argmax(predictions[0])
+            class_channel = predictions[:, pred_index]
 
     grads = tape.gradient(class_channel, conv_outputs)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     conv_outputs = conv_outputs[0]
-    heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-    heatmap = tf.squeeze(heatmap)
-    heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
-    return heatmap.numpy()
+
+    heatmap = tf.reduce_mean(tf.multiply(pooled_grads, conv_outputs), axis=-1)
+    heatmap = np.maximum(heatmap, 0) / np.max(heatmap)
+    return heatmap
+
 
 def overlay_heatmap(image_pil, heatmap, intensity=0.6):
     img = np.array(image_pil)
