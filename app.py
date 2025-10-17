@@ -35,7 +35,6 @@ model = tf.keras.models.load_model(MODEL_PATH)
 # ======================
 def get_gradcam(img_array, model, last_conv_layer_name=None):
     if last_conv_layer_name is None:
-        # Tự động tìm lớp conv cuối cùng
         last_conv_layer_name = [layer.name for layer in model.layers if 'conv' in layer.name][-1]
 
     grad_model = tf.keras.models.Model(
@@ -44,7 +43,12 @@ def get_gradcam(img_array, model, last_conv_layer_name=None):
 
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
-        # Với mô hình nhị phân (1 output sigmoid)
+
+        # Đảm bảo predictions là tensor
+        if isinstance(predictions, (list, tuple)):
+            predictions = predictions[0]
+
+        # Nếu model có đầu ra sigmoid (1 class)
         if predictions.shape[-1] == 1:
             class_channel = predictions[:, 0]
         else:
@@ -58,6 +62,7 @@ def get_gradcam(img_array, model, last_conv_layer_name=None):
     heatmap = tf.reduce_mean(tf.multiply(pooled_grads, conv_outputs), axis=-1)
     heatmap = np.maximum(heatmap, 0) / np.max(heatmap)
     return heatmap
+
 
 
 def overlay_heatmap(image_pil, heatmap, intensity=0.6):
