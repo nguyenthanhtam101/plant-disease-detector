@@ -106,13 +106,13 @@ if uploaded_file is not None:
     # ======================
     # 5️⃣ Hiển thị kết quả
     # ======================
-    if prob >= 0.5:
+    if prob >= 0.3:
         st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
 
         # --- Grad-CAM: hiển thị vùng bị bệnh ---
         heatmap = get_gradcam(img_array, model)
         img_orig, img_overlay = overlay_heatmap(image, heatmap)
-        infected_percent = calculate_infected_area(heatmap, 0.5)
+        infected_percent = calculate_infected_area(heatmap, 0.3)
 
         st.image([img_orig, img_overlay],
                  caption=["Ảnh gốc", "Vùng bị sâu bệnh"],
