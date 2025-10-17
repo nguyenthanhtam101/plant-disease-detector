@@ -5,3 +5,5 @@ numpy
 keras
 scikit-learn
 gdown
+opencv-python-headless
+
