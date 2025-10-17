@@ -1,0 +1,60 @@
+import streamlit as st
+import tensorflow as tf
+import numpy as np
+from PIL import Image
+
+# ======================
+# 1️⃣ Tiêu đề ứng dụng
+# ======================
+st.set_page_config(page_title="Rau AI - Phát hiện bệnh trên lá rau", page_icon="🥬")
+st.title("🥦 ỨNG DỤNG DỰ ĐOÁN BỆNH TRÊN LÁ RAU")
+st.write("Tải ảnh lá rau hoặc chụp ảnh trực tiếp để mô hình dự đoán xem lá có bị bệnh hay không.")
+
+# ======================
+# 2️⃣ Load mô hình
+# ======================
+MODEL_PATH = "vegetable_classifier_resnet50_final.h5"  # thay bằng tên mô hình bạn đã train
+@st.cache_resource
+def load_model():
+    model = tf.keras.models.load_model(MODEL_PATH)
+    return model
+
+model = load_model()
+st.success("✅ Mô hình đã được tải thành công!")
+
+# ======================
+# 3️⃣ Chọn ảnh
+# ======================
+option = st.radio("Chọn cách nhập ảnh:", ("📁 Tải ảnh lên", "📸 Chụp ảnh bằng camera"))
+
+if option == "📁 Tải ảnh lên":
+    uploaded_file = st.file_uploader("Chọn ảnh lá rau...", type=["jpg", "jpeg", "png"])
+elif option == "📸 Chụp ảnh bằng camera":
+    uploaded_file = st.camera_input("Chụp ảnh lá rau")
+
+# ======================
+# 4️⃣ Xử lý ảnh và dự đoán
+# ======================
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Ảnh bạn đã chọn", use_column_width=True)
+
+    # Resize ảnh đúng kích thước mô hình yêu cầu
+    img = image.resize((224, 224))
+    img_array = np.expand_dims(np.array(img) / 255.0, axis=0)
+
+    # Dự đoán
+    preds = model.predict(img_array)
+    prob = float(preds[0][0])
+
+    # ======================
+    # 5️⃣ Hiển thị kết quả
+    # ======================
+    if prob >= 0.5:
+        st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
+    else:
+        st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({(1-prob)*100:.2f}% xác suất)")
+
+    st.write("---")
+    st.caption("Model: ResNet50 (Fine-tuned) | Framework: TensorFlow + Streamlit")
+
