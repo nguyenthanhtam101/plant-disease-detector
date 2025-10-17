@@ -2,6 +2,8 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 from PIL import Image
+import os
+import gdown
 
 # ======================
 # 1️⃣ Tiêu đề ứng dụng
@@ -13,14 +15,19 @@ st.write("Tải ảnh lá rau hoặc chụp ảnh trực tiếp để mô hình 
 # ======================
 # 2️⃣ Load mô hình
 # ======================
-MODEL_PATH = "vegetable_classifier_resnet50_final.h5"  # thay bằng tên mô hình bạn đã train
-@st.cache_resource
-def load_model():
-    model = tf.keras.models.load_model(MODEL_PATH)
-    return model
+URL = "https://drive.google.com/uc?id=1TR-XkfhtfTMiBhyzkeyTZG7vVnDmz10F"
+MODEL_PATH = "model.h5"
 
-model = load_model()
-st.success("✅ Mô hình đã được tải thành công!")
+if not os.path.exists(MODEL_PATH):
+    with st.spinner("🔽 Đang tải mô hình từ Google Drive..."):
+        gdown.download(URL, MODEL_PATH, quiet=False)
+
+if os.path.exists(MODEL_PATH):
+    st.success("✅ Mô hình đã được tải thành công!")
+else:
+    st.error("❌ Không thể tải mô hình — kiểm tra lại link hoặc quyền chia sẻ Google Drive.")
+
+model = tf.keras.models.load_model(MODEL_PATH)
 
 # ======================
 # 3️⃣ Chọn ảnh
