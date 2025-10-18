@@ -31,7 +31,7 @@ else:
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # ======================
-# 🧠 HÀM GRAD-CAM
+# 🧠 HÀM GRAD-CAM + VẼ VÙNG NGHI NGỜ
 # ======================
 def get_gradcam(img_array, model, last_conv_layer_name=None):
     if last_conv_layer_name is None:
@@ -43,12 +43,9 @@ def get_gradcam(img_array, model, last_conv_layer_name=None):
 
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
-
-        # Đảm bảo predictions là tensor
         if isinstance(predictions, (list, tuple)):
             predictions = predictions[0]
 
-        # Nếu model có đầu ra sigmoid (1 class)
         if predictions.shape[-1] == 1:
             class_channel = predictions[:, 0]
         else:
@@ -58,25 +55,26 @@ def get_gradcam(img_array, model, last_conv_layer_name=None):
     grads = tape.gradient(class_channel, conv_outputs)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     conv_outputs = conv_outputs[0]
+    heatmap = tf.reduce_sum(tf.multiply(pooled_grads, conv_outputs), axis=-1)
+    heatmap = np.maximum(heatmap, 0)
+    heatmap /= np.max(heatmap) if np.max(heatmap) != 0 else 1
+    return heatmap.numpy()
 
-    heatmap = tf.reduce_mean(tf.multiply(pooled_grads, conv_outputs), axis=-1)
-    heatmap = np.maximum(heatmap, 0) / np.max(heatmap)
-    return heatmap
+def highlight_disease_regions(original_pil, heatmap, threshold=0.4):
+    """Tạo ảnh tô vùng nghi ngờ bị bệnh bằng contour detection"""
+    img = np.array(original_pil)
+    heatmap_resized = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
 
+    mask = (heatmap_resized > threshold).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+    img_marked = img.copy()
+    cv2.drawContours(img_marked, contours, -1, (255, 0, 0), 3)  # viền đỏ vùng nghi ngờ
+    return img_marked, mask
 
-def overlay_heatmap(image_pil, heatmap, intensity=0.6):
-    img = np.array(image_pil)
-    heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
-    heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    superimposed = cv2.addWeighted(img_rgb, 1 - intensity, heatmap_colored, intensity, 0)
-    return img, cv2.cvtColor(superimposed, cv2.COLOR_BGR2RGB)
-
-def calculate_infected_area(heatmap, threshold=0.5):
-    mask = heatmap > threshold
-    percent = np.sum(mask) / mask.size * 100
-    return percent
+def calculate_infected_area(mask):
+    infected_percent = np.sum(mask > 0) / mask.size * 100
+    return infected_percent
 
 # ======================
 # 3️⃣ Chọn ảnh
@@ -95,11 +93,9 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Ảnh bạn đã chọn", use_column_width=True)
 
-    # Resize ảnh đúng kích thước mô hình yêu cầu
     img = image.resize((224, 224))
     img_array = np.expand_dims(np.array(img) / 255.0, axis=0)
 
-    # Dự đoán
     preds = model.predict(img_array)
     prob = float(preds[0][0])
 
@@ -109,15 +105,15 @@ if uploaded_file is not None:
     if prob >= 0.2:
         st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
 
-        # --- Grad-CAM: hiển thị vùng bị bệnh ---
+        # --- Tạo heatmap và vùng nghi ngờ ---
         heatmap = get_gradcam(img_array, model)
-        img_orig, img_overlay = overlay_heatmap(image, heatmap)
-        infected_percent = calculate_infected_area(heatmap, 0.3)
+        img_marked, mask = highlight_disease_regions(image, heatmap)
+        infected_percent = calculate_infected_area(mask)
 
-        st.image([img_orig, img_overlay],
-                 caption=["Ảnh gốc", "Vùng bị sâu bệnh"],
+        st.image([image, img_marked],
+                 caption=["Ảnh gốc", "Vùng nghi ngờ bị sâu bệnh"],
                  width=300)
-        st.write(f"**Tỷ lệ vùng bị sâu bệnh:** {infected_percent:.2f}%")
+        st.write(f"**Tỷ lệ vùng nghi ngờ bị sâu bệnh:** {infected_percent:.2f}%")
 
         if infected_percent > 60:
             st.error("⚠️ Khuyến nghị: Lá bị sâu bệnh nặng, **nên bỏ đi** để tránh lây lan.")
@@ -131,6 +127,5 @@ if uploaded_file is not None:
 
     st.write("---")
     st.caption("Model: ResNet50 (Fine-tuned) | Framework: TensorFlow + Streamlit")
-
     st.markdown("---")
     st.caption("📌 Dự đoán chỉ mang tính chất tham khảo và có thể mắc lỗi. Vui lòng kiểm chứng các thông tin quan trọng.")
