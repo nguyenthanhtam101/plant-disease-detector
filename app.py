@@ -146,9 +146,12 @@ if uploaded_file is not None:
         heatmap, image, threshold=0.4
     )
 
-    st.image([image, Image.fromarray(overlay), Image.fromarray(img_contour)],
-             caption=["Ảnh gốc", "Bản đồ vùng bệnh (GradCAM)", "Khoanh vùng bệnh (Contour)"],
-             width=300)
+    st.image(
+        [image, Image.fromarray(overlay), Image.fromarray(img_contour)],
+        caption=["Ảnh gốc", "Bản đồ vùng bệnh (GradCAM)", "Khoanh vùng bệnh (Contour)"],
+        width=300
+    )
+
     st.write(f"**Tỷ lệ vùng bị sâu bệnh:** {infected_percent:.2f}%")
 
     # --- Gợi ý hành động ---
@@ -162,7 +165,6 @@ if uploaded_file is not None:
 else:
     st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({(1-prob)*100:.2f}% xác suất)")
     st.image(image, caption="Ảnh gốc (khỏe mạnh)", width=300)
-
 
     st.write("---")
     st.caption("Model: ResNet50 (Fine-tuned) | Framework: TensorFlow + Streamlit")
