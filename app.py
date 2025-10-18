@@ -58,7 +58,7 @@ def get_gradcam(img_array, model, last_conv_layer_name=None):
     heatmap = tf.reduce_sum(tf.multiply(pooled_grads, conv_outputs), axis=-1)
     heatmap = np.maximum(heatmap, 0)
     heatmap /= np.max(heatmap) if np.max(heatmap) != 0 else 1
-    return heatmap.numpy()
+    return np.array(heatmap)
 
 def highlight_disease_regions(original_pil, heatmap, threshold=0.4):
     """Tạo ảnh tô vùng nghi ngờ bị bệnh bằng contour detection"""
