@@ -31,14 +31,24 @@ else:
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # ======================
-# 🧠 HÀM GRAD-CAM + VẼ VÙNG NGHI NGỜ
+# 🧠 GRAD-CAM CẢI TIẾN
 # ======================
+import cv2
+import numpy as np
+import tensorflow as tf
+from PIL import Image
+
 def get_gradcam(img_array, model, last_conv_layer_name=None):
+    """
+    Tạo heatmap GradCAM tương thích ResNet50 hoặc CNN khác.
+    """
     if last_conv_layer_name is None:
+        # Tự động tìm layer cuối có chữ "conv"
         last_conv_layer_name = [layer.name for layer in model.layers if 'conv' in layer.name][-1]
 
     grad_model = tf.keras.models.Model(
-        [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
+        [model.inputs],
+        [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
     with tf.GradientTape() as tape:
@@ -46,6 +56,7 @@ def get_gradcam(img_array, model, last_conv_layer_name=None):
         if isinstance(predictions, (list, tuple)):
             predictions = predictions[0]
 
+        # Trường hợp sigmoid (1 class)
         if predictions.shape[-1] == 1:
             class_channel = predictions[:, 0]
         else:
@@ -55,26 +66,50 @@ def get_gradcam(img_array, model, last_conv_layer_name=None):
     grads = tape.gradient(class_channel, conv_outputs)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     conv_outputs = conv_outputs[0]
-    heatmap = tf.reduce_sum(tf.multiply(pooled_grads, conv_outputs), axis=-1)
+    heatmap = tf.reduce_mean(tf.multiply(pooled_grads, conv_outputs), axis=-1)
+
     heatmap = np.maximum(heatmap, 0)
-    heatmap /= np.max(heatmap) if np.max(heatmap) != 0 else 1
-    return np.array(heatmap)
+    if np.max(heatmap) == 0:
+        return np.zeros_like(heatmap)
+    heatmap /= np.max(heatmap)
+    return heatmap
 
-def highlight_disease_regions(original_pil, heatmap, threshold=0.4):
-    """Tạo ảnh tô vùng nghi ngờ bị bệnh bằng contour detection"""
-    img = np.array(original_pil)
-    heatmap_resized = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
 
-    mask = (heatmap_resized > threshold).astype(np.uint8) * 255
+def calculate_infection_area_and_contours(heatmap, image_pil, threshold=0.4):
+    """
+    - Áp ngưỡng để tính % vùng bệnh
+    - Làm mượt, tìm contour để khoanh vùng
+    """
+    img = np.array(image_pil)
+    h, w, _ = img.shape
+
+    # Resize heatmap bằng kích thước ảnh
+    heatmap_resized = cv2.resize(heatmap, (w, h))
+
+    # Tạo mask nhị phân
+    mask = (heatmap_resized > threshold).astype(np.uint8)
+
+    # Làm mượt mask để loại bỏ nhiễu
+    mask = cv2.medianBlur(mask, 5)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5,5), np.uint8))
+
+    # Tính phần trăm vùng bệnh
+    infected_pixels = np.sum(mask)
+    total_pixels = mask.size
+    infected_percent = (infected_pixels / total_pixels) * 100
+
+    # Tìm contour và vẽ lên ảnh gốc
+    img_draw = img.copy()
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(img_draw, contours, -1, (255, 0, 0), 2)
 
-    img_marked = img.copy()
-    cv2.drawContours(img_marked, contours, -1, (255, 0, 0), 3)  # viền đỏ vùng nghi ngờ
-    return img_marked, mask
+    # Tạo ảnh overlay heatmap
+    heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
+    overlay = cv2.addWeighted(cv2.cvtColor(img, cv2.COLOR_RGB2BGR), 0.6, heatmap_color, 0.4, 0)
+    overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
 
-def calculate_infected_area(mask):
-    infected_percent = np.sum(mask > 0) / mask.size * 100
-    return infected_percent
+    return infected_percent, mask, overlay, img_draw
+
 
 # ======================
 # 3️⃣ Chọn ảnh
@@ -103,27 +138,31 @@ if uploaded_file is not None:
     # 5️⃣ Hiển thị kết quả
     # ======================
     if prob >= 0.2:
-        st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
+    st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
 
-        # --- Tạo heatmap và vùng nghi ngờ ---
-        heatmap = get_gradcam(img_array, model)
-        img_marked, mask = highlight_disease_regions(image, heatmap)
-        infected_percent = calculate_infected_area(mask)
+    # --- GradCAM và khoanh vùng bệnh ---
+    heatmap = get_gradcam(img_array, model)
+    infected_percent, mask, overlay, img_contour = calculate_infection_area_and_contours(
+        heatmap, image, threshold=0.4
+    )
 
-        st.image([image, img_marked],
-                 caption=["Ảnh gốc", "Vùng nghi ngờ bị sâu bệnh"],
-                 width=300)
-        st.write(f"**Tỷ lệ vùng nghi ngờ bị sâu bệnh:** {infected_percent:.2f}%")
+    st.image([image, Image.fromarray(overlay), Image.fromarray(img_contour)],
+             caption=["Ảnh gốc", "Bản đồ vùng bệnh (GradCAM)", "Khoanh vùng bệnh (Contour)"],
+             width=300)
+    st.write(f"**Tỷ lệ vùng bị sâu bệnh:** {infected_percent:.2f}%")
 
-        if infected_percent > 60:
-            st.error("⚠️ Khuyến nghị: Lá bị sâu bệnh nặng, **nên bỏ đi** để tránh lây lan.")
-        elif infected_percent < 40:
-            st.warning("💡 Khuyến nghị: Bị nhẹ, **có thể cắt bỏ phần bệnh** để tránh ảnh hưởng toàn cây.")
-        else:
-            st.info("🩺 Mức độ trung bình, nên theo dõi thêm.")
+    # --- Gợi ý hành động ---
+    if infected_percent > 60:
+        st.error("⚠️ Khuyến nghị: Lá bị bệnh nặng, **nên loại bỏ để tránh lây lan.**")
+    elif infected_percent < 40:
+        st.warning("💡 Khuyến nghị: Bệnh nhẹ, **cắt bỏ phần bệnh** để tránh ảnh hưởng.")
     else:
-        st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({(1-prob)*100:.2f}% xác suất)")
-        st.image(image, caption="Ảnh gốc (khỏe mạnh)", width=300)
+        st.info("🩺 Mức độ trung bình, **nên theo dõi thêm.**")
+
+else:
+    st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({(1-prob)*100:.2f}% xác suất)")
+    st.image(image, caption="Ảnh gốc (khỏe mạnh)", width=300)
+
 
     st.write("---")
     st.caption("Model: ResNet50 (Fine-tuned) | Framework: TensorFlow + Streamlit")
