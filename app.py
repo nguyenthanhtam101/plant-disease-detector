@@ -162,11 +162,11 @@ if uploaded_file is not None:
         else:
             st.info("🩺 Mức độ trung bình, **nên theo dõi thêm.**")
 
-else:
-    st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({((1 - prob) * 100):.2f}% xác suất)")
-    st.image(image, caption="Ảnh gốc (khỏe mạnh)", width=300)
+    else:
+        st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({((1 - prob) * 100):.2f}% xác suất)")
+        st.image(image, caption="Ảnh gốc (khỏe mạnh)", width=300)
 
-    st.write("---")
-    st.caption("Model: ResNet50 (Fine-tuned) | Framework: TensorFlow + Streamlit")
-    st.markdown("---")
-    st.caption("📌 Dự đoán chỉ mang tính chất tham khảo và có thể mắc lỗi. Vui lòng kiểm chứng các thông tin quan trọng.")
+st.write("---")
+st.caption("Model: ResNet50 (Fine-tuned) | Framework: TensorFlow + Streamlit")
+st.markdown("---")
+st.caption("📌 Dự đoán chỉ mang tính chất tham khảo và có thể mắc lỗi. Vui lòng kiểm chứng các thông tin quan trọng.")
