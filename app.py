@@ -137,7 +137,7 @@ if uploaded_file is not None:
     # ======================
     # 5️⃣ Hiển thị kết quả
     # ======================
-    if prob >= 0.2:
+    if prob >= 0.1:
         st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
 
         # --- GradCAM và khoanh vùng bệnh ---
