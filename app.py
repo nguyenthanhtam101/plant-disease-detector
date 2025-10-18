@@ -138,29 +138,29 @@ if uploaded_file is not None:
     # 5️⃣ Hiển thị kết quả
     # ======================
     if prob >= 0.2:
-    st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
+        st.error(f"🚨 Kết quả: Lá **CÓ THỂ BỊ BỆNH** ({prob*100:.2f}% xác suất)")
 
-    # --- GradCAM và khoanh vùng bệnh ---
-    heatmap = get_gradcam(img_array, model)
-    infected_percent, mask, overlay, img_contour = calculate_infection_area_and_contours(
-        heatmap, image, threshold=0.4
-    )
+        # --- GradCAM và khoanh vùng bệnh ---
+        heatmap = get_gradcam(img_array, model)
+        infected_percent, mask, overlay, img_contour = calculate_infection_area_and_contours(
+            heatmap, image, threshold=0.4
+        )
 
-    st.image(
-        [image, Image.fromarray(overlay), Image.fromarray(img_contour)],
-        caption=["Ảnh gốc", "Bản đồ vùng bệnh (GradCAM)", "Khoanh vùng bệnh (Contour)"],
-        width=300
-    )
+        st.image(
+            [image, Image.fromarray(overlay), Image.fromarray(img_contour)],
+            caption=["Ảnh gốc", "Bản đồ vùng bệnh (GradCAM)", "Khoanh vùng bệnh (Contour)"],
+            width=300
+        )
 
-    st.write(f"**Tỷ lệ vùng bị sâu bệnh:** {infected_percent:.2f}%")
+        st.write(f"**Tỷ lệ vùng bị sâu bệnh:** {infected_percent:.2f}%")
 
-    # --- Gợi ý hành động ---
-    if infected_percent > 60:
-        st.error("⚠️ Khuyến nghị: Lá bị bệnh nặng, **nên loại bỏ để tránh lây lan.**")
-    elif infected_percent < 40:
-        st.warning("💡 Khuyến nghị: Bệnh nhẹ, **cắt bỏ phần bệnh** để tránh ảnh hưởng.")
-    else:
-        st.info("🩺 Mức độ trung bình, **nên theo dõi thêm.**")
+        # --- Gợi ý hành động ---
+        if infected_percent > 60:
+            st.error("⚠️ Khuyến nghị: Lá bị bệnh nặng, **nên loại bỏ để tránh lây lan.**")
+        elif infected_percent < 40:
+            st.warning("💡 Khuyến nghị: Bệnh nhẹ, **cắt bỏ phần bệnh** để tránh ảnh hưởng.")
+        else:
+            st.info("🩺 Mức độ trung bình, **nên theo dõi thêm.**")
 
 else:
     st.success(f"🌿 Kết quả: Lá **KHỎE MẠNH** ({(1-prob)*100:.2f}% xác suất)")
