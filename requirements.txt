@@ -6,5 +6,4 @@ keras
 scikit-learn
 gdown
 opencv-python-headless
-opencv-python
 
